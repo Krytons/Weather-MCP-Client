@@ -13,6 +13,10 @@ export default function Sidebar() {
         {
             path: "/", 
             label: "Home"
+        },
+        {
+            path: "/ai", 
+            label: "AI Chat"
         }
     ]
 

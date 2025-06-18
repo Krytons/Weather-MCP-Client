@@ -36,7 +36,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <Sidebar />
-        <div className="main-content w-full">
+        <div className="main-content justify-center w-full">
           {children}
         </div>
         <ScrollRestoration />
