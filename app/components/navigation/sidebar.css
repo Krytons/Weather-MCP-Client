@@ -1,0 +1,42 @@
+@tailwind components;
+
+@layer components {
+    .hamburger-btn {
+        @apply fixed top-4 left-4 z-50 block p-2 transition-opacity duration-500 ease-in-out;
+    }
+
+    .hamburger-btn-visible {
+        @apply opacity-100 pointer-events-auto delay-300;
+    }
+
+    .hamburger-btn-hidden {
+        @apply opacity-0 pointer-events-none;
+    }
+
+    .hamburger-bar {
+        @apply w-6 h-0.5 bg-gray-800 dark:bg-gray-200 mb-1;
+    }
+
+    .sidebar-container {
+        @apply h-full fixed top-0 left-0 w-64 bg-gray-100 dark:bg-gray-800 p-4
+            transform transition-transform duration-1000 ease-in-out
+            translate-x-0 block z-40;
+    }
+
+    .sidebar-open {
+        @apply translate-x-0;
+    }
+
+    .sidebar-closed {
+        @apply -translate-x-full;
+    }
+
+    .sidebar-link {
+        @apply block px-4 py-2 rounded-md text-gray-700 dark:text-gray-200 
+            hover:bg-gray-200 dark:hover:bg-gray-700;
+    }
+
+    .sidebar-link-active {
+        @apply bg-gray-300 dark:bg-gray-600;
+    }
+}
