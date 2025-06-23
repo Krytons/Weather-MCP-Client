@@ -2,17 +2,39 @@ import Anthropic from "@anthropic-ai/sdk";
 import { MessageParam, Tool} from "@anthropic-ai/sdk/resources/messages/messages.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import MCPClientInterface from "~/interfaces/MCPClientInteface";
+import { MCPClientInterface } from "~/interfaces/MCPIntefaces";
 import { ChatMessage } from "~/types/ChatTypes";
 
+
+//Configure Dotenv 
+import dotenv from 'dotenv';
+dotenv.config();
+
+
 export class AnthropicMCPClient implements MCPClientInterface{
+    /**
+     * SINGLETON INSTANCE
+     */
+    static #instance: AnthropicMCPClient;
+
+
+    /**
+     * ATTRIBUTES
+     */
     transport: StreamableHTTPClientTransport;
     tools: Tool[];
     mcp: Client;
     llm: Anthropic;
     model: string;
+    isConnected: boolean;
 
-    constructor(serverUrl: URL){
+
+    /**
+     * CONSTRUCTORS
+     */
+
+
+    private constructor(serverUrl: URL){
         this.transport = new StreamableHTTPClientTransport(serverUrl, {
             reconnectionOptions : {
                 maxReconnectionDelay: 20000,
@@ -30,13 +52,33 @@ export class AnthropicMCPClient implements MCPClientInterface{
             apiKey: process.env.ANTHROPIC_API_KEY,
         });
         this.model = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
+        this.isConnected = false;
     }
+
+    public static get instance(): AnthropicMCPClient{
+        if(!process.env.MCP_SERVER_URL)
+            throw new Error('[MCP-CLIENT] No server URL provided. Please try again');
+
+        if(!AnthropicMCPClient.#instance)
+            AnthropicMCPClient.#instance = new AnthropicMCPClient(new URL(process.env.MCP_SERVER_URL));
+        
+        return AnthropicMCPClient.#instance;
+    }
+
+
+    /**
+     * FUNCTIONS
+     */
+
 
     /**
      * Function that starts a connection to an MCP Server
      * @returns 
      */
     public async connectToServer() : Promise<boolean>{
+        if(this.isConnected)
+            return true;
+
         try {
             //STEP 1 -- Connect to MCP Server
             await this.mcp.connect(this.transport);
@@ -50,11 +92,12 @@ export class AnthropicMCPClient implements MCPClientInterface{
                     input_schema: tool.inputSchema
                 }
             })
-            console.log("Connected to server with tools:", this.tools.map(({ name }) => name));
+            console.log("[MCP-CLIENT] Connected to server with tools:", this.tools.map(({ name }) => name));
+            this.isConnected = true;
             return true;
         }
         catch(error){
-            console.log(`Connection to MCP server has failed: ${error instanceof Error ? error.message : error}`);
+            console.log(`[MCP-CLIENT] Connection to MCP server has failed: ${error instanceof Error ? error.message : error}`);
             return false;
         }
     }
@@ -64,10 +107,11 @@ export class AnthropicMCPClient implements MCPClientInterface{
         try {
             //STEP 1 -- Disconnect from MCP Server
             await this.mcp.close();
+            this.isConnected = false;
             return true;
         }
         catch(error){
-            console.log(`Disconnection from MCP server has failed: ${error instanceof Error ? error.message : error}`);
+            console.log(`[MCP-CLIENT] Disconnection from MCP server has failed: ${error instanceof Error ? error.message : error}`);
             return false;
         }
     }
@@ -107,7 +151,7 @@ export class AnthropicMCPClient implements MCPClientInterface{
                     });
 
                     //STEP 3.B -- Push executed action to result, and call LLM for tool result processing
-                    conversationResults.push(`[Calling tool ${toolName} with args ${JSON.stringify(toolCallResult)}]`);
+                    conversationResults.push(`Calling tool ${toolName} with args ${JSON.stringify(toolCallResult)}`);
                     messages.push({
                         role: "user",
                         content: toolCallResult.content as string,
@@ -120,10 +164,9 @@ export class AnthropicMCPClient implements MCPClientInterface{
                     conversationResults.push(processingResponse.content[0].type === "text" ? processingResponse.content[0].text : "");
                     break;
                 default:
-                    throw new Error("Content type not supported");
+                    throw new Error("[MCP-CLIENT] Content type not supported");
             }
         });
-
         return conversationResults.join("\n");
     }
 }
