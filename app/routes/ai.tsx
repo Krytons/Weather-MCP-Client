@@ -2,10 +2,12 @@ import { Form, useFetcher, useLoaderData } from "@remix-run/react";
 import { FormEvent, useEffect, useState } from "react";
 import { ChatMessage } from "~/types/ChatTypes";
 import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { AnthropicMCPClient } from "~/.server/models/mcp/AnthropicMCPClient";
+import { AnthropicMCPClient } from "~/.server/services/AnthropicMCPClient";
 import Message from "~/components/chat/Message";
 import "~/ai.css"; 
 import LoadingDots from "~/components/loaders/LoadingDots";
+import { AuthService } from "~/.server/services/AuthService";
+import { appSessionStorage } from "~/.server/session/AppSessionStorage";
 
 
 /**
@@ -14,7 +16,21 @@ import LoadingDots from "~/components/loaders/LoadingDots";
  * @returns 
  */
 export async function loader({request} : LoaderFunctionArgs) {
-    const connected = await AnthropicMCPClient.instance.connectToServer();
+    //STEP 1 -- Get a valid auth token for MCP Server
+    let authServiceResponse = AuthService.authenticateClient();
+    if (!authServiceResponse) 
+        throw new Response("Failed to authenticate client", { status: 500 });
+    console.log("[AI-ROUTE] Authenticated client successfully");
+    
+    //STEP 2 -- Get JWT from session 
+    const session = await appSessionStorage.getSession(request.headers.get("Cookie") );
+    let jwt = session.get("jwt");
+
+    //STEP 3 -- Connect to MCP Server
+    let mcpClient = new AnthropicMCPClient(jwt);
+    if (!mcpClient) 
+        throw new Response("Failed to create MCP Client", { status: 500 }); 
+    let connected = mcpClient.connectToServer(request);
     if (!connected) 
         throw new Response("Failed to connect to MCP Server", { status: 500 });
     return Response.json({ connected });
