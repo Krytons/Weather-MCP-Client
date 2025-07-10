@@ -11,10 +11,12 @@ import { createReadableStreamFromReadable } from "@remix-run/node";
 import { RemixServer } from "@remix-run/react";
 import { isbot } from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
+import { AnthropicMCPClient } from "./.server/services/AnthropicMCPClient";
 
 const ABORT_DELAY = 5_000;
 
 import dotenv from 'dotenv';
+import { AuthService } from "./.server/services/AuthService";
 dotenv.config();
 
 export default function handleRequest(
@@ -141,3 +143,69 @@ function handleBrowserRequest(
     setTimeout(abort, ABORT_DELAY);
   });
 }
+
+
+// Global MCP Client instance
+let globalMCPClient: AnthropicMCPClient | null = null;
+let mcpInitializationPromise: Promise<boolean> | null = null;
+
+/**
+ * Initialize shared MCP Client connection
+ */
+async function initializeMCPClient() : Promise<boolean> {
+  //STEP 0 -- Check initialization
+  if (globalMCPClient && globalMCPClient.isConnected) 
+    return true;
+  if (mcpInitializationPromise) 
+    return await mcpInitializationPromise;
+  
+  try{
+    //STEP 1 -- Authenticate client to get a valid JWT
+      let authServiceResponse = await AuthService.authenticateClient();
+      if (!authServiceResponse) 
+          throw new Response("Failed to authenticate client", { status: 500 });
+      console.log("[MCP-CLIENT-HANDLER] Authenticated client successfully");
+
+      //STEP 2 -- Instantiate new MCP Client 
+      globalMCPClient = new AnthropicMCPClient(authServiceResponse.token);
+
+      //STEP 3 -- Connect MCP Client to MCP Server
+      const connected = await globalMCPClient.connectToServer();
+      if (connected)
+        console.log("[ENTRY-SERVER] Global MCP Client connected successfully");
+
+      //STEP 4 -- Setup graceful shutdown
+      process.on('SIGINT', async () => {
+        console.log("[ENTRY-SERVER] Shutting down MCP Client...");
+        if (globalMCPClient) 
+          await globalMCPClient.disconnectFromServer();
+        process.exit(0);
+      });
+      
+      process.on('SIGTERM', async () => {
+        console.log("[ENTRY-SERVER] Shutting down MCP Client...");
+        if (globalMCPClient) 
+          await globalMCPClient.disconnectFromServer();
+        process.exit(0);
+      });
+
+      return true;
+  }
+  catch (error) {
+    console.error("[ENTRY-SERVER] Failed to initialize MCP Client:", error);
+    globalMCPClient = null;
+    return false;
+  }
+}
+
+/**
+ * Get the global MCP Client instance
+ */
+export function getGlobalMCPClient(): AnthropicMCPClient | null {
+  return globalMCPClient;
+}
+
+// Initialize MCP Client on server startup
+initializeMCPClient().catch(error => {
+  console.error("[ENTRY-SERVER] Critical error during MCP Client initialization:", error);
+});

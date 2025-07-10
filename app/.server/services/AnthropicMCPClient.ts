@@ -73,7 +73,7 @@ export class AnthropicMCPClient implements MCPClientInterface{
      * Function that starts a connection to an MCP Server
      * @returns 
      */
-    public async connectToServer(request : Request) : Promise<boolean>{
+    public async connectToServer() : Promise<boolean>{
         if(this.isConnected)
             return true;
 
@@ -121,7 +121,7 @@ export class AnthropicMCPClient implements MCPClientInterface{
         }
     }
 
-    public async processUserMessage(message : ChatMessage) : Promise<string>{
+    public async processUserMessage(message : ChatMessage, userSessionID : string) : Promise<string>{
         //STEP 1 -- Generate message array for current request
         let messages : MessageParam[] = [
             {
@@ -136,7 +136,10 @@ export class AnthropicMCPClient implements MCPClientInterface{
             model: this.model,
             max_tokens: 1000,
             messages,
-            tools: this.tools
+            tools: this.tools,
+            metadata: {
+                user_id: userSessionID  
+            }   
         });
         console.log(`[MCP-CLIENT] Received response ${response}`);
 
@@ -191,6 +194,9 @@ export class AnthropicMCPClient implements MCPClientInterface{
                             model: this.model,
                             max_tokens: 1000,
                             messages,
+                            metadata: {
+                                user_id: userSessionID  
+                            }  
                         });
                         console.log(`[MCP-CLIENT] Processing response from ${toolName}:`, processingResponse);
                         

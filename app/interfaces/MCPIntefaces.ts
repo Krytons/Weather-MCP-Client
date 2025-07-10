@@ -14,13 +14,7 @@ export interface MCPClientInterface {
   isConnected: boolean;
   mcpSessionId?: string;
 
-  connectToServer(request : Request): Promise<boolean>;
+  connectToServer(): Promise<boolean>;
   disconnectFromServer(): Promise<boolean>;
-  processUserMessage(message: ChatMessage): Promise<string>;
-}
-
-export interface MCPClientHandlerInterface {
-  connectToServer(request : Request): Promise<boolean>;
-  disconnectFromServer(request : Request): Promise<boolean>;
-  processUserMessage(message: ChatMessage, request : Request): Promise<string>;
+  processUserMessage(message: ChatMessage, userSessionID : string): Promise<string>;
 }

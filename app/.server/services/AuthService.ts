@@ -1,11 +1,14 @@
 import { AuthResponse } from "~/types/AuthTypes";
-import { appSessionStorage } from "../session/AppSessionStorage";
 
 export class AuthService {
-    public static async authenticateClient(): Promise<boolean> {
+    public static async authenticateClient(): Promise<AuthResponse | undefined> {
         try {
-            //STEP 1 -- Call the authenticate method of AuthClient
-            const response = await fetch(`${process.env.AUTH_API_URL}/v1/users/auth`, {
+            console.log("[AUTH-SERVICE] API_SERVER_URL:", process.env.API_SERVER_URL);
+            console.log("[AUTH-SERVICE] API_SERVER_EMAIL:", process.env.API_SERVER_EMAIL);
+            console.log("[AUTH-SERVICE] API_SERVER_KEY:", process.env.API_SERVER_KEY);
+            
+            //STEP 1 -- Call the authenticate method of AuthClient            
+            const response = await fetch(`${process.env.API_SERVER_URL}/v1/tenants/auth`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -15,19 +18,12 @@ export class AuthService {
             });
             if (!response.ok) {
                 console.warn("[AUTH-SERVICE] Failed to authenticate client. Response not OK.");
-                return false;
+                return;
             }
-
-            const authResponseData = await response.json() as AuthResponse;
-
-            //STEP 2 -- Save jwt inside session
-            const session = await appSessionStorage.getSession();
-            session.set("jwt", authResponseData.token);
-            session.set("expiresAt", authResponseData.expiresAt);
-            return true;
+            return await response.json() as AuthResponse;
         } 
         catch (error) {
-            throw new Error("Authentication failed");
+            throw new Error(`[AUTH-SERVICE] Authentication failed due to internal error: ${error}`);
         }
     }
 }
