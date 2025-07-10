@@ -8,12 +8,6 @@ import { ChatMessage } from "~/types/ChatTypes";
 
 export class AnthropicMCPClient implements MCPClientInterface{
     /**
-     * SINGLETON INSTANCE
-     */
-    static #instance: AnthropicMCPClient;
-
-
-    /**
      * ATTRIBUTES
      */
     transport: StreamableHTTPClientTransport;
@@ -22,46 +16,51 @@ export class AnthropicMCPClient implements MCPClientInterface{
     llm: Anthropic;
     model: string;
     isConnected: boolean;
+    mcpSessionId?: string;
 
 
     /**
      * CONSTRUCTORS
      */
-
-
-    private constructor(serverUrl: URL){
+    public constructor(authToken: string){
+        //STEP 1 -- Look for a valid Anthropic Secret and MCP Server URL
         if(!process.env.ANTHROPIC_SECRET)
             throw new Error("[MCP-CLIENT] Missing ANTHROPIC_SECRET. Check .env");
+        let serverUrl = process.env.MCP_SERVER_URL;
+        if(!serverUrl)
+            throw new Error("[MCP-CLIENT] Missing MCP_SERVER_URL. Check .env");
 
-        this.transport = new StreamableHTTPClientTransport(serverUrl, {
+        //STEP 2 -- Setup transport headers
+        const headers: Record<string, string> = {
+            'Authorization': `Bearer ${authToken}`
+        };
+
+        //STEP 3 -- Initialize MCP Client and Transport 
+        this.transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
             reconnectionOptions : {
                 maxReconnectionDelay: 20000,
                 initialReconnectionDelay: 1000,
                 reconnectionDelayGrowFactor: 1.5,
                 maxRetries: 5
+            },
+            requestInit : {
+                headers
             }
         });
+
+        //STEP 4 -- Initialize MCP Client
         this.mcp = new Client({
             name: "mcp-weather-client",
             version: "1.0.0"
         });
+        this.isConnected = false;
         this.tools = [];
+
+        //STEP 5 -- Initialize LLM Client
         this.llm = new Anthropic({
             apiKey: process.env.ANTHROPIC_SECRET,
         });
-        
         this.model = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
-        this.isConnected = false;
-    }
-
-    public static get instance(): AnthropicMCPClient{
-        if(!process.env.MCP_SERVER_URL)
-            throw new Error('[MCP-CLIENT] No server URL provided. Please try again');
-
-        if(!AnthropicMCPClient.#instance)
-            AnthropicMCPClient.#instance = new AnthropicMCPClient(new URL(process.env.MCP_SERVER_URL));
-        
-        return AnthropicMCPClient.#instance;
     }
 
 
@@ -79,11 +78,14 @@ export class AnthropicMCPClient implements MCPClientInterface{
             return true;
 
         try {
-            //STEP 1 -- Connect to MCP Server
+            //STEP 1 --  Get JWT from MCP Server
+            console.log(`[MCP-CLIENT] Getting JWT from ${process.env.MCP_SERVER_URL}`);
+            
+            //STEP 2 -- Connect to MCP Server
             console.log(`[MCP-CLIENT] Connecting to ${process.env.MCP_SERVER_URL}`)
             await this.mcp.connect(this.transport);
 
-            //STEP 2 -- Get tools
+            //STEP 3 -- Get tools
             const serverTools = await this.mcp.listTools();
             this.tools = serverTools.tools.map((tool) => {
                 return {
@@ -94,6 +96,7 @@ export class AnthropicMCPClient implements MCPClientInterface{
             })
             console.log("[MCP-CLIENT] Connected to server with tools:", this.tools.map(({ name }) => name));
             this.isConnected = true;
+            this.mcpSessionId = this.transport.sessionId;
             return true;
         }
         catch(error){
@@ -109,6 +112,7 @@ export class AnthropicMCPClient implements MCPClientInterface{
             //STEP 1 -- Disconnect from MCP Server
             await this.mcp.close();
             this.isConnected = false;
+            this.mcpSessionId = undefined;
             return true;
         }
         catch(error){
@@ -117,7 +121,7 @@ export class AnthropicMCPClient implements MCPClientInterface{
         }
     }
 
-    public async processUserMessage(message : ChatMessage) : Promise<string>{
+    public async processUserMessage(message : ChatMessage, userSessionID : string) : Promise<string>{
         //STEP 1 -- Generate message array for current request
         let messages : MessageParam[] = [
             {
@@ -132,7 +136,10 @@ export class AnthropicMCPClient implements MCPClientInterface{
             model: this.model,
             max_tokens: 1000,
             messages,
-            tools: this.tools
+            tools: this.tools,
+            metadata: {
+                user_id: userSessionID  
+            }   
         });
         console.log(`[MCP-CLIENT] Received response ${response}`);
 
@@ -187,6 +194,9 @@ export class AnthropicMCPClient implements MCPClientInterface{
                             model: this.model,
                             max_tokens: 1000,
                             messages,
+                            metadata: {
+                                user_id: userSessionID  
+                            }  
                         });
                         console.log(`[MCP-CLIENT] Processing response from ${toolName}:`, processingResponse);
                         

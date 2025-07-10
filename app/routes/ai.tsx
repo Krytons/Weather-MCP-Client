@@ -2,10 +2,11 @@ import { Form, useFetcher, useLoaderData } from "@remix-run/react";
 import { FormEvent, useEffect, useState } from "react";
 import { ChatMessage } from "~/types/ChatTypes";
 import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { AnthropicMCPClient } from "~/.server/models/mcp/AnthropicMCPClient";
 import Message from "~/components/chat/Message";
 import "~/ai.css"; 
 import LoadingDots from "~/components/loaders/LoadingDots";
+import { getUserSessionId, jsonWithSession } from "~/.server/session/AppSessionStorage";
+import { getGlobalMCPClient } from "~/entry.server";
 
 
 /**
@@ -14,10 +15,16 @@ import LoadingDots from "~/components/loaders/LoadingDots";
  * @returns 
  */
 export async function loader({request} : LoaderFunctionArgs) {
-    const connected = await AnthropicMCPClient.instance.connectToServer();
-    if (!connected) 
+    //STEP 1 -- Be sure that server has an instance of mcpClient
+    const mcpClient = getGlobalMCPClient();
+    if (!mcpClient) 
         throw new Response("Failed to connect to MCP Server", { status: 500 });
-    return Response.json({ connected });
+
+    //STEP 2 -- Retrieve session for current user
+    const currentSessionId = await getUserSessionId(request);
+    
+    //STEP 3 -- Return MCP connection status
+    return jsonWithSession(request, { connected: mcpClient.isConnected });
 }
 
 
@@ -27,6 +34,7 @@ export async function loader({request} : LoaderFunctionArgs) {
  * @returns 
  */
 export async function action({request} : ActionFunctionArgs){
+    //STEP 1 -- Compose user message
     const formData = await request.formData();
     const userText = formData?.get("user-message");
     if(!userText || typeof userText !== "string")
@@ -39,11 +47,21 @@ export async function action({request} : ActionFunctionArgs){
         text: userText
     }
     
-    const mcpClient = AnthropicMCPClient.instance;
+    //STEP 2 -- Get MCP client and be sure it's connected
+    const mcpClient = getGlobalMCPClient();
+    if(!mcpClient)
+        return Response.json({
+            error: "Internal server error",
+            status: 500
+        })
     if(!mcpClient.isConnected)
         await mcpClient.connectToServer();
 
-    let aiResponse = await mcpClient.processUserMessage(userMessage);
+    //STEP 3 -- Retrieve session for current user
+    const currentSessionId = await getUserSessionId(request);
+
+    //STEP 4 -- Process chat message and return it's response
+    let aiResponse = await mcpClient.processUserMessage(userMessage, currentSessionId);
     console.log("Server response: " + aiResponse);
     return Response.json({
         agentMessage: { 
